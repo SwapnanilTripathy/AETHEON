@@ -132,25 +132,33 @@ export default function App() {
 		if (!workspaceSelected) {
 			try {
 				const info = await getWorkspaceInfo(text);
-				if(info.exists && info.isDirectory && socket && socket.id) {
-					setWorkspace(info.absolutePath);
-					setMessages((prev) => [...prev, {role: 'model', text: `Workspace is set to: ${info.absolutePath}`, edit: false}]);
-					setUploading(true);
-					await sendProjectFiles(socket.id, info.absolutePath);
-						setWorkspaceSelected(true);
-					setUploading(false);
-				} else if (info.exists) {
-					setMessages((prev) => [...prev, {role: 'model', text: 'Path exists but is not a directory. Please enter a valid directory path.', edit: false}]);
-				} else {
+				if (!info.exists) {
 					setMessages((prev) => [...prev, {role: 'model', text: 'Directory does not exist. Please enter a valid project directory path.', edit: false}]);
+				} else if (!info.isDirectory) {
+					setMessages((prev) => [...prev, {role: 'model', text: 'Path exists but is not a directory. Please enter a valid project directory path.', edit: false}]);
+				} else if (!socket || !isConnected || !socket.id) {
+					setMessages((prev) => [...prev, {role: 'model', text: 'Backend is not connected yet. Check the API terminal and try again.', edit: false}]);
+				} else {
+					setWorkspace(info.absolutePath);
+					setUploading(true);
+					try {
+						const result = await sendProjectFiles(socket.id, info.absolutePath);
+						setWorkspaceSelected(true);
+						setMessages((prev) => [...prev, {
+							role: 'model',
+							text: 'Workspace set to: ' + info.absolutePath + '\nIndexed ' + result.files_processed + ' files. You can start chatting now.',
+							edit: false
+						}]);
+					} finally {
+						setUploading(false);
+					}
 				}
 			} catch (err: unknown) {
 				const message = err instanceof Error ? err.message : 'Unknown error occurred';
-				setMessages((prev) => [...prev, {role: 'model', text: `Error validating path: ${message}`, edit: false}]);
+				setMessages((prev) => [...prev, {role: 'model', text: 'Workspace setup failed: ' + message, edit: false}]);
 			}
 			return;
 		}
-
 		setIsLoading(true);
 		setError(null);
 
