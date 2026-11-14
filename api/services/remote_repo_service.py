@@ -162,17 +162,17 @@ async def query_stream(question: str, mode: str, socket_id: str, session_id: UUI
             async for chunk in response.stream_text():
                 if chunk:
                     streamed_text = True
-                    yield f"data: {json.dumps({'chunk': chunk})}\\n\\n"
+                    yield f"data: {json.dumps({'chunk': chunk})}\n\n"
 
             if not streamed_text:
                 logger.warning(
                     "RAG query completed without any text output for session {}",
                     session_id,
                 )
-                yield f"data: {json.dumps({'error': 'The model completed without returning a text answer. Check backend logs for tool or model errors.'})}\\n\\n"
+                yield f"data: {json.dumps({'error': 'The model completed without returning a text answer. Check backend logs for tool or model errors.'})}\n\n"
 
             # Yield end marker
-            yield "data: [DONE]\\n\\n"
+            yield "data: [DONE]\n\n"
         
         # Update session history after streaming completes
         for msg in response.new_messages():
