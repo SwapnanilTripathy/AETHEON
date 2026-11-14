@@ -2,6 +2,8 @@ from fastapi import APIRouter, status
 from pydantic import BaseModel
 from fastapi.responses import JSONResponse, StreamingResponse
 from services.remote_repo_service import query, query_stream, discard_changes, ingest_uploaded
+from loguru import logger
+import json
 from typing import Optional
 import base64
 from uuid import UUID
@@ -41,8 +43,21 @@ async def query_repo(request: QueryRequest):
 @router.post("/remote/repo/query/stream", status_code=status.HTTP_200_OK)
 async def query_repo_stream(request: QueryRequest):
     """Streaming endpoint for query response."""
+    async def safe_stream():
+        try:
+            async for event in query_stream(
+                question=request.question,
+                mode=request.mode,
+                socket_id=request.socket_id,
+                session_id=request.session_id,
+            ):
+                yield event
+        except Exception as exc:
+            logger.exception("Streaming repository query failed")
+            yield f"data: {json.dumps({'error': f'{type(exc).__name__}: {exc}'})}\\n\\n"
+
     return StreamingResponse(
-        query_stream(question=request.question, mode=request.mode, socket_id=request.socket_id, session_id=request.session_id),
+        safe_stream(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
