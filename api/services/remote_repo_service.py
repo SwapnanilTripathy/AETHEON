@@ -150,13 +150,7 @@ async def query_stream(question: str, mode: str, socket_id: str, session_id: UUI
         if mode == 'agent' and len(messages) == 0:
                 question_with_context = agent_instruction.format(question=question)
         
-        # Use stream method for streaming response
-        async with rag_agent.run_stream(question_with_context, message_history=[_deserialize_message(msg.content) for msg in messages]) as response:
-            # First, yield session_id and edit status as a special message
-            edit = has_edit_tool_calls(response)
-            yield f"data: {json.dumps({'session_id': str(session_id), 'edit': edit})}\n\n"
-            
-            # Run the full agent graph so function tools execute before the final answer.
+        # Run the full agent graph so function tools execute before the final answer.
         # run_stream() can stop at an early text output before subsequent tool calls;
         # run_stream_events() continues through the complete tool/response cycle.
         run_result = None
