@@ -169,40 +169,46 @@ export default function App() {
 			let currentSessionId = sessionId;
 			let edit = false;
 			let accumulatedMessage = '';
+			let buffer = '';
+
+			const processEvent = (event: string) => {
+				for (const line of event.split(/\r?\n/)) {
+					if (!line.startsWith('data: ')) continue;
+					const data = line.slice(6);
+					if (data === '[DONE]') continue;
+
+					const parsed = JSON.parse(data) as {
+						session_id?: string;
+						edit?: boolean;
+						chunk?: string;
+					};
+					if (parsed.session_id) {
+						currentSessionId = parsed.session_id;
+						edit = Boolean(parsed.edit);
+						if (!sessionId) setSessionId(currentSessionId);
+					} else if (typeof parsed.chunk === 'string') {
+						accumulatedMessage += parsed.chunk;
+						setStreamingMessage(accumulatedMessage);
+					}
+				}
+			};
 
 			while (true) {
 				const { done, value } = await reader.read();
 				if (done) break;
 
-				const decodedText = decoder.decode(value, { stream: true });
-				const lines = decodedText.split('\n');
-
-				for (const line of lines) {
-					if (line.startsWith('data: ')) {
-						const data = line.slice(6);
-						if (data === '[DONE]') continue;
-
-						try {
-							const parsed = JSON.parse(data);
-							
-							if (parsed.session_id) {
-								// First message contains session_id and edit status
-								currentSessionId = parsed.session_id;
-								edit = parsed.edit;
-								if (!sessionId) {
-									setSessionId(currentSessionId);
-								}
-							} else if (parsed.chunk) {
-								// Streaming chunk
-								accumulatedMessage = parsed.chunk;
-								setStreamingMessage(accumulatedMessage);
-							}
-						} catch (e) {
-							// Ignore parsing errors for non-JSON data
-						}
-					}
+				buffer += decoder.decode(value, { stream: true });
+				let boundary = buffer.indexOf('\n\n');
+				while (boundary !== -1) {
+					const event = buffer.slice(0, boundary);
+					buffer = buffer.slice(boundary + 2);
+					if (event.trim()) processEvent(event);
+					boundary = buffer.indexOf('\n\n');
 				}
 			}
+
+			buffer += decoder.decode();
+			if (buffer.trim()) processEvent(buffer);
 
 			// Finalize the message
 			setMessages((prev) => [...prev, {role: 'model', text: accumulatedMessage, edit}]);
