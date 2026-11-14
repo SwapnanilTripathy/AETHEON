@@ -133,7 +133,7 @@ def _initialize_services_and_agent(ingestor: MemgraphIngestor, socket_id: str) -
 
 
 async def query_stream(question: str, mode: str, socket_id: str, session_id: UUID = None) -> AsyncGenerator[str, None]:
-    """Stream query response token by token."""
+    """Run the full RAG tool cycle and emit the final answer as SSE."""
     with MemgraphIngestor(
         host=settings.MEMGRAPH_HOST,
         port=settings.MEMGRAPH_PORT,
