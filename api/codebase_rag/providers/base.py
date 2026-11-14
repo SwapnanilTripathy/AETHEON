@@ -6,10 +6,11 @@ from urllib.parse import urljoin
 
 import httpx
 from loguru import logger
-from pydantic_ai.models.gemini import GeminiModel, GeminiModelSettings
+from pydantic_ai.models.google import GoogleModel as PydanticGoogleModel
+from pydantic_ai.models.google import GoogleModelSettings as PydanticGoogleModelSettings
 from pydantic_ai.models.openai import OpenAIModel, OpenAIResponsesModel
-from pydantic_ai.providers.google_gla import GoogleGLAProvider
-from pydantic_ai.providers.google_vertex import GoogleVertexProvider, VertexAiRegion
+from pydantic_ai.providers.google import GoogleProvider as PydanticGoogleProvider
+from pydantic_ai.providers.google_cloud import GoogleCloudProvider as PydanticGoogleCloudProvider
 from pydantic_ai.providers.azure import AzureProvider as PydanticAzureProvider
 from pydantic_ai.providers.openai import OpenAIProvider as PydanticOpenAIProvider
 from openai import AzureOpenAI
@@ -53,7 +54,7 @@ class GoogleProvider(ModelProvider):
     ) -> None:
         super().__init__(**kwargs)
         self.api_key = api_key
-        self.provider_type = provider_type
+        self.provider_type = provider_type or "gla"
         self.project_id = project_id
         self.region = region
         self.service_account_file = service_account_file
@@ -75,25 +76,41 @@ class GoogleProvider(ModelProvider):
                 "Set ORCHESTRATOR_PROJECT_ID or CYPHER_PROJECT_ID in .env file."
             )
 
-    def create_model(self, model_id: str, **kwargs: Any) -> GeminiModel:
+    def create_model(self, model_id: str, **kwargs: Any) -> PydanticGoogleModel:
+        """Create a Gemini model using Pydantic AI's maintained Google adapter.
+
+        The GoogleModel implementation uses google-genai and preserves Gemini
+        thought signatures across function-call turns.
+        """
         self.validate_config()
 
         if self.provider_type == "vertex":
-            provider = GoogleVertexProvider(
-                project_id=self.project_id,
-                region=cast(VertexAiRegion, self.region),
-                service_account_file=self.service_account_file,
+            credentials = None
+            if self.service_account_file:
+                from google.auth import load_credentials_from_file
+
+                credentials, _ = load_credentials_from_file(
+                    self.service_account_file
+                )
+            provider = PydanticGoogleCloudProvider(
+                project=self.project_id,
+                location=self.region,
+                credentials=credentials,
             )
         else:
-            provider = GoogleGLAProvider(api_key=self.api_key)
+            provider = PydanticGoogleProvider(api_key=self.api_key)
 
-        if self.thinking_budget is None:
-            return GeminiModel(model_id, provider=provider, **kwargs)
-        model_settings = GeminiModelSettings(
-            gemini_thinking_config={"thinking_budget": int(self.thinking_budget)}
-        )
-        return GeminiModel(
-            model_id, provider=provider, model_settings=model_settings, **kwargs
+        model_settings = None
+        if self.thinking_budget is not None:
+            model_settings = PydanticGoogleModelSettings(
+                google_thinking_config={"thinking_budget": int(self.thinking_budget)}
+            )
+
+        return PydanticGoogleModel(
+            model_id,
+            provider=provider,
+            settings=model_settings,
+            **kwargs,
         )
 
 
