@@ -22,8 +22,9 @@ type MessageItem = {
 export default function App() {
 	const {exit} = useApp();
 	const { socket, isConnected, isConnecting, connectionError, tool } = useSocket();
-	const { workspace, setWorkspace } = useWorkspace();
+	const { setWorkspace } = useWorkspace();
 	const [messages, setMessages] = useState<MessageItem[]>([]);
+	const [workspaceSelected, setWorkspaceSelected] = useState(false);
 	const [isLoading, setIsLoading] = useState(false);
 	const [uploading, setUploading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -121,13 +122,14 @@ export default function App() {
 		if (text === '/quit') {
 			setSessionId(null);
 			setWorkspace(process.cwd());
+			setWorkspaceSelected(false);
 			setMessages([{role: 'model', text: welcomeMessage, edit: false}]);
 			return;
 		}
 
 		setMessages((prev) => [...prev, {role: 'user', text, edit: false}]);
 
-		if(workspace == process.cwd()) {
+		if (!workspaceSelected) {
 			try {
 				const info = await getWorkspaceInfo(text);
 				if(info.exists && info.isDirectory && socket && socket.id) {
@@ -135,6 +137,7 @@ export default function App() {
 					setMessages((prev) => [...prev, {role: 'model', text: `Workspace is set to: ${info.absolutePath}`, edit: false}]);
 					setUploading(true);
 					await sendProjectFiles(socket.id, info.absolutePath);
+						setWorkspaceSelected(true);
 					setUploading(false);
 				} else if (info.exists) {
 					setMessages((prev) => [...prev, {role: 'model', text: 'Path exists but is not a directory. Please enter a valid directory path.', edit: false}]);
