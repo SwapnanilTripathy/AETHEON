@@ -17,5 +17,13 @@ export async function sendProjectFiles(
             }
         )
     });
-    return res.json();
+    const result = await res.json() as {
+        status?: string;
+        message?: string;
+        files_processed?: number;
+    };
+    if (!res.ok || result.status === "error") {
+        throw new Error(result.message || `Repository ingestion failed (${res.status}).`);
+    }
+    return result as {status: string, message: string, files_processed: number};
 }
