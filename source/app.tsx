@@ -199,7 +199,7 @@ export default function App() {
 						edit = Boolean(parsed.edit);
 						if (!sessionId) setSessionId(currentSessionId);
 					} else if (typeof parsed.chunk === 'string') {
-						accumulatedMessage += parsed.chunk;
+						accumulatedMessage = parsed.chunk;
 						setStreamingMessage(accumulatedMessage);
 					}
 				}
