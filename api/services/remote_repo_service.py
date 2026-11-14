@@ -26,7 +26,6 @@ from services.session_service import SessionService
 from core.db.database import redis_client, SessionLocal
 from sockets.server import sio
 from prompt.agent import agent_instruction
-from pydantic_ai import AgentRunResultEvent
 from pydantic_ai.messages import ModelResponse, ToolCallPart, ModelRequest, ModelMessage, ModelMessagesTypeAdapter
 from loguru import logger
 import json
@@ -150,27 +149,19 @@ async def query_stream(question: str, mode: str, socket_id: str, session_id: UUI
         if mode == 'agent' and len(messages) == 0:
                 question_with_context = agent_instruction.format(question=question)
         
-        # Run the full agent graph so function tools execute before the final answer.
-        # run_stream() can stop at an early text output before subsequent tool calls;
-        # run_stream_events() continues through the complete tool/response cycle.
-        run_result = None
-        async with rag_agent.run_stream_events(
+        # Run the complete agent workflow, including all tool calls, before
+        # emitting the final answer. This uses the same supported Agent.run()
+        # path as the non-streaming query endpoint.
+        run_result = await rag_agent.run(
             question_with_context,
             message_history=[_deserialize_message(msg.content) for msg in messages],
-        ) as events:
-            async for event in events:
-                if isinstance(event, AgentRunResultEvent):
-                    run_result = event.result
-
-        if run_result is None:
-            raise RuntimeError('The RAG agent stream ended without a final run result.')
+        )
 
         edit = has_edit_tool_calls(run_result)
         yield f"data: {json.dumps({'session_id': str(session_id), 'edit': edit})}\n\n"
 
         final_output = run_result.output
         if isinstance(final_output, str) and final_output.strip():
-            # The full tool cycle is complete; send the final verified answer.
             yield f"data: {json.dumps({'chunk': final_output})}\n\n"
         else:
             logger.warning(
