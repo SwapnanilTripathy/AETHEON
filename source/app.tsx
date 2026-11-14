@@ -181,7 +181,11 @@ export default function App() {
 						session_id?: string;
 						edit?: boolean;
 						chunk?: string;
+						error?: string;
 					};
+					if (parsed.error) {
+						throw new Error(parsed.error);
+					}
 					if (parsed.session_id) {
 						currentSessionId = parsed.session_id;
 						edit = Boolean(parsed.edit);
