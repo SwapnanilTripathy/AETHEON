@@ -26,6 +26,7 @@ from services.session_service import SessionService
 from core.db.database import redis_client, SessionLocal
 from sockets.server import sio
 from prompt.agent import agent_instruction
+from pydantic_ai import AgentRunResultEvent
 from pydantic_ai.messages import ModelResponse, ToolCallPart, ModelRequest, ModelMessage, ModelMessagesTypeAdapter
 from loguru import logger
 import json
@@ -155,27 +156,43 @@ async def query_stream(question: str, mode: str, socket_id: str, session_id: UUI
             edit = has_edit_tool_calls(response)
             yield f"data: {json.dumps({'session_id': str(session_id), 'edit': edit})}\n\n"
             
-            # Stream accumulated text snapshots from Pydantic AI.
-            # stream_text() yields the complete text received so far, which the
-            # CLI replaces on each event rather than appending as a delta.
-            streamed_text = False
-            async for chunk in response.stream_text():
-                if chunk:
-                    streamed_text = True
-                    yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+            # Run the full agent graph so function tools execute before the final answer.
+        # run_stream() can stop at an early text output before subsequent tool calls;
+        # run_stream_events() continues through the complete tool/response cycle.
+        run_result = None
+        async with rag_agent.run_stream_events(
+            question_with_context,
+            message_history=[_deserialize_message(msg.content) for msg in messages],
+        ) as events:
+            async for event in events:
+                if isinstance(event, AgentRunResultEvent):
+                    run_result = event.result
 
-            if not streamed_text:
-                logger.warning(
-                    "RAG query completed without any text output for session {}",
-                    session_id,
-                )
-                yield f"data: {json.dumps({'error': 'The model completed without returning a text answer. Check backend logs for tool or model errors.'})}\n\n"
+        if run_result is None:
+            raise RuntimeError('The RAG agent stream ended without a final run result.')
 
-            # Yield end marker
-            yield "data: [DONE]\n\n"
-        
+        edit = has_edit_tool_calls(run_result)
+        yield f"data: {json.dumps({'session_id': str(session_id), 'edit': edit})}\n\n"
+
+        final_output = run_result.output
+        if isinstance(final_output, str) and final_output.strip():
+            # The full tool cycle is complete; send the final verified answer.
+            yield f"data: {json.dumps({'chunk': final_output})}\n\n"
+        else:
+            logger.warning(
+                "RAG query completed without text output for session {} (output type: {})",
+                session_id,
+                type(final_output).__name__,
+            )
+            error_payload = json.dumps({
+                'error': 'The RAG agent completed without a text answer. Check backend logs for the final output type.'
+            })
+            yield f"data: {error_payload}\n\n"
+
+        yield "data: [DONE]\n\n"
+
         # Update session history after streaming completes
-        for msg in response.new_messages():
+        for msg in run_result.new_messages():
             # Use TypeAdapter for proper serialization of nested part types
             content = json.loads(ModelMessagesTypeAdapter.dump_json([msg]))
             messages.append(
