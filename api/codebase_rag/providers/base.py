@@ -1,7 +1,7 @@
 """Base provider interface and registry for LLM providers."""
 
 from abc import ABC, abstractmethod
-from typing import Any, cast
+from typing import Any
 from urllib.parse import urljoin
 
 import httpx
