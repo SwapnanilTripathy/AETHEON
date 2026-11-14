@@ -155,12 +155,24 @@ async def query_stream(question: str, mode: str, socket_id: str, session_id: UUI
             edit = has_edit_tool_calls(response)
             yield f"data: {json.dumps({'session_id': str(session_id), 'edit': edit})}\n\n"
             
-            # Stream the output token by token
-            async for chunk in response.stream():
-                yield f"data: {json.dumps({'chunk': chunk})}\n\n"
-            
+            # Stream accumulated text snapshots from Pydantic AI.
+            # stream_text() yields the complete text received so far, which the
+            # CLI replaces on each event rather than appending as a delta.
+            streamed_text = False
+            async for chunk in response.stream_text():
+                if chunk:
+                    streamed_text = True
+                    yield f"data: {json.dumps({'chunk': chunk})}\\n\\n"
+
+            if not streamed_text:
+                logger.warning(
+                    "RAG query completed without any text output for session {}",
+                    session_id,
+                )
+                yield f"data: {json.dumps({'error': 'The model completed without returning a text answer. Check backend logs for tool or model errors.'})}\\n\\n"
+
             # Yield end marker
-            yield "data: [DONE]\n\n"
+            yield "data: [DONE]\\n\\n"
         
         # Update session history after streaming completes
         for msg in response.new_messages():
