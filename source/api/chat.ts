@@ -41,7 +41,14 @@ export async function sendMessageStream(
             }
         )
     });
-    return res.body!;
+    if (!res.ok) {
+        const details = await res.text();
+        throw new Error(`Chat request failed (${res.status}): ${details || res.statusText}`);
+    }
+    if (!res.body) {
+        throw new Error("Chat request returned an empty response stream.");
+    }
+    return res.body;
 }
 
 export async function rejectChange(
