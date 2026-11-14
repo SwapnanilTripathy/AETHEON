@@ -54,7 +54,8 @@ async def query_repo_stream(request: QueryRequest):
                 yield event
         except Exception as exc:
             logger.exception("Streaming repository query failed")
-            yield f"data: {json.dumps({'error': f'{type(exc).__name__}: {exc}'})}\\n\\n"
+            error_payload = json.dumps({"error": f"{type(exc).__name__}: {exc}"})
+            yield f"data: {error_payload}\n\n"
 
     return StreamingResponse(
         safe_stream(),
